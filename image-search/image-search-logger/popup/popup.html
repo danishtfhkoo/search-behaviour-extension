@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Session Manager</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Image Search Logger</h1>
+    
+    <div id="setupView" class="view">
+      <div class="form-group">
+        <label for="participantId">Participant ID:</label>
+        <input type="text" id="participantId" placeholder="e.g., P001" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="taskId">Task/Condition ID:</label>
+        <input type="text" id="taskId" placeholder="e.g., TASK1" required>
+      </div>
+      
+      <button id="startBtn" class="btn btn-primary">Start Session</button>
+    </div>
+    
+    <div id="activeView" class="view hidden">
+      <div class="status-badge active">Session Active</div>
+      
+      <div class="info-group">
+        <div class="info-item">
+          <span class="label">Participant:</span>
+          <span id="activeParticipant" class="value">-</span>
+        </div>
+        <div class="info-item">
+          <span class="label">Task:</span>
+          <span id="activeTask" class="value">-</span>
+        </div>
+      </div>
+      
+      <div class="timer-container">
+        <div class="timer" id="sessionTimer">00:00:00</div>
+      </div>
+      
+      <div class="stats">
+        <div class="stat-item">
+          <div class="stat-value" id="queryCount">0</div>
+          <div class="stat-label">Queries</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="saveCount">0</div>
+          <div class="stat-label">Saves</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value" id="eventCount">0</div>
+          <div class="stat-label">Events</div>
+        </div>
+      </div>
+      
+      <button id="endBtn" class="btn btn-danger">End Session</button>
+      <button id="exportBtn" class="btn btn-secondary">Export Logs</button>
+    </div>
+    
+    <div class="footer">
+      <small>Research Extension v1.0</small>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

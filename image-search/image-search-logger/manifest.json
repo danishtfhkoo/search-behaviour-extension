@@ -1,0 +1,93 @@
+{
+    "manifest_version": 3,
+    "name": "Image Search Behaviour Logger",
+    "version": "1.0.0",
+    "description": "Research tool for logging user behavior during Google Images search sessions",
+    "permissions": [
+        "storage",
+        "activeTab",
+        "scripting",
+        "downloads"
+    ],
+    "host_permissions": [
+        "*://www.google.com/*",
+        "*://www.google.ca/*",
+        "*://www.google.co.uk/*",
+        "*://www.google.com.au/*",
+        "*://www.google.de/*",
+        "*://www.google.fr/*",
+        "*://www.google.es/*",
+        "*://www.google.it/*",
+        "*://www.google.nl/*",
+        "*://www.google.be/*",
+        "*://www.google.ch/*",
+        "*://www.google.at/*",
+        "*://www.google.se/*",
+        "*://www.google.dk/*",
+        "*://www.google.no/*",
+        "*://www.google.fi/*",
+        "*://www.google.com.br/*",
+        "*://www.google.com.mx/*",
+        "*://www.google.co.jp/*",
+        "*://www.google.co.kr/*",
+        "*://www.google.com.sg/*",
+        "*://www.google.com.hk/*",
+        "*://www.google.co.in/*",
+        "*://www.google.co.nz/*",
+        "*://www.google.co.za/*"
+    ],
+    "background": {
+        "service_worker": "background/service-worker.js"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "*://www.google.com/*",
+                "*://www.google.ca/*",
+                "*://www.google.co.uk/*",
+                "*://www.google.com.au/*",
+                "*://www.google.de/*",
+                "*://www.google.fr/*",
+                "*://www.google.es/*",
+                "*://www.google.it/*",
+                "*://www.google.nl/*",
+                "*://www.google.be/*",
+                "*://www.google.ch/*",
+                "*://www.google.at/*",
+                "*://www.google.se/*",
+                "*://www.google.dk/*",
+                "*://www.google.no/*",
+                "*://www.google.fi/*",
+                "*://www.google.com.br/*",
+                "*://www.google.com.mx/*",
+                "*://www.google.co.jp/*",
+                "*://www.google.co.kr/*",
+                "*://www.google.com.sg/*",
+                "*://www.google.com.hk/*",
+                "*://www.google.co.in/*",
+                "*://www.google.co.nz/*",
+                "*://www.google.co.za/*"
+            ],
+            "js": [
+                "content/content.js"
+            ],
+            "css": [
+                "content/content.css"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_popup": "popup/popup.html",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "48": "icons/icon48.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "icons": {
+        "16": "icons/icon16.png",
+        "48": "icons/icon48.png",
+        "128": "icons/icon128.png"
+    }
+}

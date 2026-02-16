@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Extension Diagnostic Tool</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'SF Pro', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 30px;
+            font-size: 32px;
+        }
+        .test-section {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+        }
+        h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .success { color: #4ade80; }
+        .error { color: #f87171; }
+        .warning { color: #fbbf24; }
+        .info { color: #60a5fa; }
+        .status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .status.pass { background: #d1fae5; color: #065f46; }
+        .status.fail { background: #fee2e2; color: #991b1b; }
+        .status.pending { background: #e5e7eb; color: #374151; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Extension Diagnostic Tool</h1>
+        <p style="color: #666; margin-bottom: 30px;">Run these tests in order to identify where the extension is failing.</p>
+
+        <div class="test-section">
+            <h2>1. Extension Detection <span class="status pending" id="status1">NOT RUN</span></h2>
+            <button onclick="test1()">Test Extension Availability</button>
+            <div class="output" id="output1"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Service Worker Communication <span class="status pending" id="status2">NOT RUN</span></h2>
+            <button onclick="test2()">Test Message Passing</button>
+            <div class="output" id="output2"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. Storage Test <span class="status pending" id="status3">NOT RUN</span></h2>
+            <button onclick="test3()">Test Chrome Storage</button>
+            <div class="output" id="output3"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Session Start Test <span class="status pending" id="status4">NOT RUN</span></h2>
+            <button onclick="test4()">Start Test Session</button>
+            <div class="output" id="output4"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>5. View All Storage <span class="status pending" id="status5">NOT RUN</span></h2>
+            <button onclick="test5()">View Storage Contents</button>
+            <div class="output" id="output5"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>6. Log Test Event <span class="status pending" id="status6">NOT RUN</span></h2>
+            <button onclick="test6()">Send Test Event</button>
+            <div class="output" id="output6"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>7. End Session Test <span class="status pending" id="status7">NOT RUN</span></h2>
+            <button onclick="test7()">End Test Session</button>
+            <div class="output" id="output7"></div>
+        </div>
+    </div>
+
+    <script>
+        function log(id, text, type = 'info') {
+            const output = document.getElementById(id);
+            const className = type;
+            output.innerHTML += `<span class="${className}">${text}</span>\n`;
+        }
+
+        function clear(id) {
+            document.getElementById(id).innerHTML = '';
+        }
+
+        function setStatus(id, pass) {
+            const status = document.getElementById(id);
+            status.textContent = pass ? 'PASS' : 'FAIL';
+            status.className = `status ${pass ? 'pass' : 'fail'}`;
+        }
+
+        async function test1() {
+            clear('output1');
+            try {
+                if (typeof chrome === 'undefined' || !chrome.runtime) {
+                    log('output1', '❌ Chrome extension API not available', 'error');
+                    setStatus('status1', false);
+                    return;
+                }
+
+                const manifest = chrome.runtime.getManifest();
+                log('output1', `✅ Extension detected: ${manifest.name}`, 'success');
+                log('output1', `   Version: ${manifest.version}`, 'info');
+                log('output1', `   Manifest: v${manifest.manifest_version}`, 'info');
+                setStatus('status1', true);
+            } catch (error) {
+                log('output1', `❌ Error: ${error.message}`, 'error');
+                setStatus('status1', false);
+            }
+        }
+
+        async function test2() {
+            clear('output2');
+            try {
+                log('output2', 'Sending message to background...', 'info');
+                
+                const response = await chrome.runtime.sendMessage({ action: 'GET_QUERY_ID' });
+                
+                log('output2', `✅ Response received:`, 'success');
+                log('output2', JSON.stringify(response, null, 2), 'info');
+                setStatus('status2', true);
+            } catch (error) {
+                log('output2', `❌ Error: ${error.message}`, 'error');
+                log('output2', 'Tip: Check if service worker is running in chrome://extensions', 'warning');
+                setStatus('status2', false);
+            }
+        }
+
+        async function test3() {
+            clear('output3');
+            try {
+                log('output3', 'Writing test data...', 'info');
+                await chrome.storage.local.set({ diagnosticTest: 'SUCCESS', timestamp: Date.now() });
+                
+                log('output3', 'Reading test data...', 'info');
+                const result = await chrome.storage.local.get('diagnosticTest');
+                
+                if (result.diagnosticTest === 'SUCCESS') {
+                    log('output3', '✅ Storage read/write works!', 'success');
+                    setStatus('status3', true);
+                } else {
+                    log('output3', '❌ Storage data mismatch', 'error');
+                    setStatus('status3', false);
+                }
+                
+                await chrome.storage.local.remove('diagnosticTest');
+            } catch (error) {
+                log('output3', `❌ Error: ${error.message}`, 'error');
+                setStatus('status3', false);
+            }
+        }
+
+        async function test4() {
+            clear('output4');
+            try {
+                log('output4', 'Starting test session...', 'info');
+                
+                const response = await chrome.runtime.sendMessage({
+                    action: 'START_SESSION',
+                    data: {
+                        participantId: 'DIAG001',
+                        taskId: 'DIAGNOSTIC'
+                    }
+                });
+                
+                if (response.success) {
+                    log('output4', '✅ Session started successfully!', 'success');
+                    log('output4', `   Session ID: ${response.sessionState.sessionId}`, 'info');
+                    log('output4', `   Participant: ${response.sessionState.participantId}`, 'info');
+                    log('output4', `   Task: ${response.sessionState.taskId}`, 'info');
+                    setStatus('status4', true);
+                } else {
+                    log('output4', `❌ Session start failed: ${response.error}`, 'error');
+                    setStatus('status4', false);
+                }
+            } catch (error) {
+                log('output4', `❌ Error: ${error.message}`, 'error');
+                setStatus('status4', false);
+            }
+        }
+
+        async function test5() {
+            clear('output5');
+            try {
+                const all = await chrome.storage.local.get(null);
+                log('output5', '📦 Storage contents:', 'info');
+                log('output5', JSON.stringify(all, null, 2), 'info');
+                setStatus('status5', true);
+            } catch (error) {
+                log('output5', `❌ Error: ${error.message}`, 'error');
+                setStatus('status5', false);
+            }
+        }
+
+        async function test6() {
+            clear('output6');
+            try {
+                log('output6', 'Sending test event...', 'info');
+                
+                const testEvent = {
+                    event_id: crypto.randomUUID(),
+                    event_type: 'diagnostic_test',
+                    timestamp: new Date().toISOString(),
+                    query_id: 1,
+                    data: { test: true }
+                };
+                
+                const response = await chrome.runtime.sendMessage({
+                    action: 'LOG_EVENT',
+                    event: testEvent
+                });
+                
+                if (response.success) {
+                    log('output6', '✅ Event logged successfully!', 'success');
+                    log('output6', `   Queue length: ${response.queueLength}`, 'info');
+                    setStatus('status6', true);
+                } else {
+                    log('output6', `❌ Event logging failed: ${response.error}`, 'error');
+                    setStatus('status6', false);
+                }
+            } catch (error) {
+                log('output6', `❌ Error: ${error.message}`, 'error');
+                setStatus('status6', false);
+            }
+        }
+
+        async function test7() {
+            clear('output7');
+            try {
+                log('output7', 'Ending session...', 'info');
+                
+                const response = await chrome.runtime.sendMessage({ action: 'END_SESSION' });
+                
+                if (response.success) {
+                    log('output7', '✅ Session ended successfully!', 'success');
+                    log('output7', `   Events sent: ${response.eventsSent}`, 'info');
+                    setStatus('status7', true);
+                } else {
+                    log('output7', `❌ Session end failed: ${response.error}`, 'error');
+                    setStatus('status7', false);
+                }
+            } catch (error) {
+                log('output7', `❌ Error: ${error.message}`, 'error');
+                setStatus('status7', false);
+            }
+        }
+
+        // Auto-run first test
+        setTimeout(() => test1(), 500);
+    </script>
+</body>
+</html>
