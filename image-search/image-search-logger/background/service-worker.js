@@ -2,7 +2,7 @@
 
 // Import utilities (service workers use import instead of require)
 try {
-    importScripts('../utils/storage.js', '../utils/api.js', '../utils/logger.js');
+    importScripts('../utils/storage.js', '../utils/logger.js');
     console.log('[Background] Utils loaded successfully');
 
     // Verify functions are available
@@ -12,19 +12,14 @@ try {
     if (typeof getSessionState === 'undefined') {
         console.error('[Background] ERROR: getSessionState not defined!');
     }
-    if (typeof sendEvents === 'undefined') {
-        console.error('[Background] ERROR: sendEvents not defined!');
-    }
+    // sendEvents not needed anymore
 
     console.log('[Background] All utility functions verified');
 } catch (error) {
     console.error('[Background] Failed to load utils:', error);
 }
 
-const BATCH_SIZE = 50;
-const BATCH_INTERVAL_MS = 30000; // 30 seconds
-
-let batchTimer = null;
+// Batch constants removed
 let currentQueryId = 0;
 
 // Initialize on install
@@ -118,7 +113,7 @@ async function handleStartSession({ participantId, taskId }) {
         currentQueryId = 0;
 
         // Start batch timer
-        startBatchTimer();
+        // Batch timer removed
 
         console.log('[Background] Session started:', sessionId);
 
@@ -142,21 +137,30 @@ async function handleEndSession() {
             return { success: false, error: 'No active session' };
         }
 
-        // Stop batch timer
-        stopBatchTimer();
+        // Get all data for export
+        const eventQueue = await getEventQueue();
+        const stats = await getSessionStats();
 
-        // Flush all remaining events
-        const result = await flushEvents(true);
+        const exportData = {
+            session_id: sessionState.sessionId,
+            participant_id: sessionState.participantId,
+            task_id: sessionState.taskId,
+            start_time: new Date(sessionState.startTime).toISOString(),
+            end_time: new Date().toISOString(),
+            statistics: stats,
+            events: eventQueue
+        };
 
         // Clear session
         await clearSessionState();
         await resetSessionStats();
+        await clearEventQueue();
 
         console.log('[Background] Session ended:', sessionState.sessionId);
 
         return {
             success: true,
-            eventsSent: result.eventsSent,
+            data: exportData,
             message: 'Session ended successfully'
         };
     } catch (error) {
@@ -185,15 +189,13 @@ async function handleLogEvent(event) {
             await incrementStat('saves');
         } else if (event.event_type === 'image_click') {
             await incrementStat('clicks');
+        } else if (event.event_type === 'filter_click') {
+            await incrementStat('filter_changes');
         }
 
         console.log(`[Background] Event logged: ${event.event_type} (queue: ${queueLength})`);
 
-        // Check if we should flush
-        if (queueLength >= BATCH_SIZE) {
-            console.log('[Background] Queue full, flushing events');
-            await flushEvents(false);
-        }
+        // Flush logic removed
 
         return { success: true, queueLength };
     } catch (error) {
@@ -248,67 +250,7 @@ async function handleGetQueryId() {
     }
 }
 
-// Flush events to backend
-async function flushEvents(isFinal = false) {
-    const queue = await getEventQueue();
-
-    if (queue.length === 0) {
-        console.log('[Background] No events to flush');
-        return { eventsSent: 0 };
-    }
-
-    const sessionState = await getSessionState();
-
-    if (!sessionState) {
-        console.warn('[Background] Cannot flush - no session state');
-        return { eventsSent: 0 };
-    }
-
-    console.log(`[Background] Flushing ${queue.length} events...`);
-
-    const result = await sendEvents(
-        sessionState.sessionId,
-        sessionState.participantId,
-        sessionState.taskId,
-        queue
-    );
-
-    if (result.success) {
-        // Clear queue after successful send
-        await clearEventQueue();
-        console.log(`[Background] Successfully flushed ${queue.length} events`);
-        return { eventsSent: queue.length };
-    } else {
-        console.error('[Background] Failed to flush events:', result.error);
-
-        if (isFinal) {
-            // On final flush (session end), keep events in queue for manual export
-            console.warn('[Background] Events retained in queue for manual export');
-        }
-
-        return { eventsSent: 0, error: result.error };
-    }
-}
-
-// Batch timer
-function startBatchTimer() {
-    stopBatchTimer();
-
-    batchTimer = setInterval(async () => {
-        console.log('[Background] Batch timer triggered');
-        await flushEvents(false);
-    }, BATCH_INTERVAL_MS);
-
-    console.log('[Background] Batch timer started');
-}
-
-function stopBatchTimer() {
-    if (batchTimer) {
-        clearInterval(batchTimer);
-        batchTimer = null;
-        console.log('[Background] Batch timer stopped');
-    }
-}
+// Flush and batch timer functions removed
 
 
 // Increment query ID

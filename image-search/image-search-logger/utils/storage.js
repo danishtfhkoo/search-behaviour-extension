@@ -35,6 +35,7 @@ async function getSessionStats() {
         queries: 0,
         saves: 0,
         clicks: 0,
+        filter_changes: 0,
         totalEvents: 0
     };
 }
@@ -61,6 +62,7 @@ async function resetSessionStats() {
             queries: 0,
             saves: 0,
             clicks: 0,
+            filter_changes: 0,
             totalEvents: 0
         }
     });

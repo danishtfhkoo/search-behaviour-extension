@@ -15,6 +15,34 @@ let maxScrollDepth = 0;
 let imageClickStartTime = null;
 let lastClickedUrl = null;
 let saveButtonInjected = false;
+let lastFilterState = '';
+let lastSentDepth = 0;
+
+// Helper for reformulation type
+function getReformulationType(current, previous) {
+    if (!previous) return 'new';
+
+    // Normalize
+    const normalize = (s) => (s || '').toLowerCase().trim().replace(/\s+/g, ' ');
+    const curr = normalize(current);
+    const prev = normalize(previous);
+
+    if (curr === prev) return 'repeat';
+
+    // Word-based check
+    const currWords = curr.split(' ').filter(w => w.length > 0);
+    const prevWords = prev.split(' ').filter(w => w.length > 0);
+
+    // Additive: all prev words in curr
+    const isAdditive = prevWords.every(w => currWords.includes(w));
+    if (isAdditive && currWords.length > prevWords.length) return 'additive';
+
+    // Subtractive: all curr words in prev
+    const isSubtractive = currWords.every(w => prevWords.includes(w));
+    if (isSubtractive && currWords.length < prevWords.length) return 'subtractive';
+
+    return 'rewrite';
+}
 
 // Check if we're on Google Images
 function isGoogleImages() {
@@ -82,6 +110,9 @@ async function init() {
 
         // Observe DOM changes (Google loads images dynamically)
         observeDOMChanges();
+
+        // Setup filter tracking
+        setupFilterTracking();
     } else {
         console.log('[Content] No active session');
     }
@@ -92,13 +123,29 @@ async function trackQuery() {
     const url = new URL(window.location.href);
     const queryText = url.searchParams.get('q') || '';
 
-    if (queryText === currentQuery) {
-        console.log('[Content] Query unchanged, skipping');
+    // Clean query text for comparison
+    const cleanQuery = (queryText || '').trim();
+
+    // Check filter state (tbs/udm/chips)
+    const filterState = ['tbs', 'udm', 'tbm', 'chips'].map(k => url.searchParams.get(k)).join('|');
+
+    if (cleanQuery === currentQuery && filterState === lastFilterState) {
+        console.log('[Content] Query/Filter unchanged, skipping');
         return;
     }
 
+    let reformulationType = 'new';
+    if (currentQuery !== null) { // Only if not first query
+        if (cleanQuery === currentQuery && filterState !== lastFilterState) {
+            reformulationType = 'filter_change';
+        } else {
+            reformulationType = getReformulationType(cleanQuery, currentQuery);
+        }
+    }
+
     previousQuery = currentQuery;
-    currentQuery = queryText;
+    currentQuery = cleanQuery;
+    lastFilterState = filterState;
 
     // Increment query ID
     const response = await safeSendMessage({ action: 'INCREMENT_QUERY_ID' });
@@ -115,7 +162,7 @@ async function trackQuery() {
             data: {
                 query_text: queryText,
                 query_length_char: queryText.length,
-                query_length_tokens: queryText.split(/\s+/).filter(t => t.length > 0).length,
+                reformulation_type: reformulationType,
                 previous_query: previousQuery,
                 referrer_query: null // Could extract from document.referrer if needed
             }
@@ -131,6 +178,7 @@ async function trackQuery() {
 
         // Reset scroll depth
         maxScrollDepth = 0;
+        lastSentDepth = 0;
     }
 }
 
@@ -186,12 +234,12 @@ function setupImageClickListeners() {
 // Extract image data from clicked element
 function extractImageData(element, event) {
     try {
-        // Find the image grid item
+        // Find the image grid item (closest div with data-ri)
         const gridItem = element.closest('div[data-ri]');
         let rankIndex = null;
 
         if (gridItem) {
-            rankIndex = parseInt(gridItem.getAttribute('data-ri')) || null;
+            rankIndex = parseInt(gridItem.getAttribute('data-ri'));
         }
 
         // Try to find image URLs
@@ -206,20 +254,30 @@ function extractImageData(element, event) {
             thumbnailUrl = img.src;
         }
 
-        // Look for link to source page
-        const link = element.closest('a[href*="/imgres?"]');
-        if (link) {
-            const href = new URL(link.href);
-            imageUrl = href.searchParams.get('imgurl');
-            sourcePageUrl = href.searchParams.get('imgrefurl');
+        // Look for link parameters
+        const link = element.closest('a');
+        if (link && link.href) {
+            try {
+                const url = new URL(link.href);
+                imageUrl = url.searchParams.get('imgurl');
+                sourcePageUrl = url.searchParams.get('imgrefurl');
 
-            if (sourcePageUrl) {
-                try {
-                    domain = new URL(sourcePageUrl).hostname;
-                } catch (e) {
-                    domain = null;
+                if (sourcePageUrl) {
+                    try {
+                        domain = new URL(sourcePageUrl).hostname;
+                    } catch (e) {
+                        domain = null;
+                    }
                 }
+            } catch (e) {
+                // Ignore URL parse errors
             }
+        }
+
+        // If we have at least a rank index OR a thumbnail, consider it a valid result click
+        // even if we couldn't parse the full image URL (which often happens with side-panel results)
+        if (rankIndex === null && !thumbnailUrl && !imageUrl) {
+            return null;
         }
 
         return {
@@ -328,30 +386,54 @@ async function handleSave() {
 // Extract data for save action
 function extractSaveData() {
     try {
-        // Find the preview panel
+        // Find the preview panel (side panel or dialog)
         const previewPanel = document.querySelector('[data-ved][role="dialog"]') ||
             document.querySelector('.irc_c') ||
-            document.querySelector('#islsp');
+            document.querySelector('#islsp') ||
+            document.querySelector('#Sva75c'); // Common ID for side panel
 
         if (!previewPanel) {
             console.error('[Content] Preview panel not found');
             return null;
         }
 
-        // Extract image element
-        const img = previewPanel.querySelector('img[src*="http"]');
-        let imageUrl = img ? img.src : null;
-        let imageWidth = img ? img.naturalWidth : null;
-        let imageHeight = img ? img.naturalHeight : null;
+        // Extract main image
+        // Strategy: Look for images with http(s) src (not data URI) and reasonable size
+        const images = Array.from(previewPanel.querySelectorAll('img'));
+        let mainImg = null;
+        let largestArea = 0;
 
-        // Extract alt text / caption
-        let altText = img ? img.alt : null;
+        for (const img of images) {
+            if (!img.src || img.src.startsWith('data:')) continue;
+
+            // Check dimensions if available (naturalWidth/Height often 0 if not fully loaded, but clientWidth works)
+            const width = img.naturalWidth || img.clientWidth || 0;
+            const height = img.naturalHeight || img.clientHeight || 0;
+            const area = width * height;
+
+            // Heuristic: Main image is usually the largest
+            if (area > largestArea) {
+                largestArea = area;
+                mainImg = img;
+            }
+        }
+
+        // If no large image found, fallback to specific classes or first http image
+        if (!mainImg) {
+            mainImg = previewPanel.querySelector('img.n3VNCb') ||
+                previewPanel.querySelector('img[src^="http"]');
+        }
+
+        let imageUrl = mainImg ? mainImg.src : null;
+        let imageWidth = mainImg ? (mainImg.naturalWidth || mainImg.width) : null;
+        let imageHeight = mainImg ? (mainImg.naturalHeight || mainImg.height) : null;
+        let altText = mainImg ? mainImg.alt : null;
+
+        // Extract title/caption
         let captionText = null;
-
-        // Try to find title/caption elements
-        const titleElements = previewPanel.querySelectorAll('[role="heading"], h2, h3');
-        if (titleElements.length > 0) {
-            captionText = titleElements[0].textContent.trim();
+        const titleElement = previewPanel.querySelector('h1, h2, h3, [role="heading"]');
+        if (titleElement) {
+            captionText = titleElement.textContent.trim();
         }
 
         // Extract source page URL and domain
@@ -360,49 +442,47 @@ function extractSaveData() {
         let resultTitle = null;
         let siteName = null;
 
-        const visitLink = previewPanel.querySelector('a[href*="imgrefurl"]');
+        // Look for the "Visit" button or similar links
+        const links = Array.from(previewPanel.querySelectorAll('a'));
+        const visitLink = links.find(a => a.href && a.href.includes('imgrefurl')) ||
+            links.find(a => a.textContent.toLowerCase().includes('visit'));
+
         if (visitLink) {
-            const href = new URL(visitLink.href);
-            sourcePageUrl = href.searchParams.get('imgrefurl');
-
-            if (sourcePageUrl) {
-                try {
-                    const url = new URL(sourcePageUrl);
-                    domain = url.hostname;
-                } catch (e) {
-                    domain = null;
+            try {
+                const urlObj = new URL(visitLink.href);
+                // If it's a google redirect, parse it
+                if (urlObj.href.includes('imgrefurl')) {
+                    sourcePageUrl = urlObj.searchParams.get('imgrefurl');
+                } else {
+                    sourcePageUrl = visitLink.href;
                 }
-            }
 
-            // Try to get site name
+                if (sourcePageUrl) {
+                    domain = new URL(sourcePageUrl).hostname;
+                }
+            } catch (e) { }
+
+            // Site name is often the text of the visit link or a nearby element
             siteName = visitLink.textContent.trim();
         }
 
-        // Try to find result title
-        const titleLink = previewPanel.querySelector('a[href*="imgrefurl"] div');
-        if (titleLink) {
-            resultTitle = titleLink.textContent.trim();
-        }
-
-        // Get thumbnail URL (fallback)
-        let thumbnailUrl = imageUrl;
-
-        // Try to get rank index from data attribute
+        // Try to get rank index from data attribute of the selected item in the main grid
         let rankIndex = null;
-        const gridItem = document.querySelector('div[data-ri][class*="selected"]');
-        if (gridItem) {
-            rankIndex = parseInt(gridItem.getAttribute('data-ri')) || null;
+        const selectedGridItem = document.querySelector('div[data-ri][class*="selected"]') ||
+            document.querySelector('div[data-ri].isv-r.CAM'); // Common selected class
+        if (selectedGridItem) {
+            rankIndex = parseInt(selectedGridItem.getAttribute('data-ri'));
         }
 
         return {
             image_url: imageUrl,
-            thumbnail_url: thumbnailUrl,
+            thumbnail_url: imageUrl, // Fallback
             source_page_url: sourcePageUrl,
             domain: domain,
             rank_index: rankIndex,
             alt_text: altText,
             caption_text: captionText,
-            result_title: resultTitle,
+            result_title: captionText, // Use caption as title if separate title not found
             site_name: siteName,
             image_width: imageWidth,
             image_height: imageHeight
@@ -462,12 +542,35 @@ function setupScrollTracking() {
 
         clearTimeout(scrollTimeout);
 
-        scrollTimeout = setTimeout(() => {
-            const scrollPercent = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
+        scrollTimeout = setTimeout(async () => {
+            const docHeight = document.documentElement.scrollHeight;
+            const winHeight = window.innerHeight;
+
+            if (docHeight <= winHeight) return;
+
+            const scrollPercent = Math.min(100, Math.max(0, (window.scrollY / (docHeight - winHeight)) * 100));
 
             if (scrollPercent > maxScrollDepth) {
                 maxScrollDepth = scrollPercent;
-                console.log('[Content] Max scroll depth:', maxScrollDepth.toFixed(2) + '%');
+
+                // Stick to 10% increments
+                if (maxScrollDepth - lastSentDepth >= 10 || maxScrollDepth > 99) {
+                    // Update checkpoint
+                    lastSentDepth = maxScrollDepth;
+
+                    await safeSendMessage({
+                        action: 'LOG_EVENT',
+                        event: {
+                            event_id: crypto.randomUUID(),
+                            event_type: 'scroll',
+                            timestamp: new Date().toISOString(),
+                            query_id: currentQueryId,
+                            data: { max_scroll_depth: Math.round(maxScrollDepth) }
+                        }
+                    });
+
+                    console.log('[Content] Scroll logged:', Math.round(maxScrollDepth) + '%');
+                }
             }
         }, 500); // Throttle to every 500ms
     });
@@ -512,6 +615,53 @@ function setupVisibilityTracking() {
     });
 
     console.log('[Content] Visibility tracking enabled');
+}
+
+// Filter tracking
+function setupFilterTracking() {
+    console.log('[Content] Setting up filter tracking');
+
+    // Use event delegation for filter clicks
+    document.addEventListener('click', async (e) => {
+        if (!sessionActive) return;
+
+        // Heuristic: Filter elements usually are in the top bar or have specific classes/roles
+        // We look for typical Google filter structures
+        const filterElement = e.target.closest('a[href*="tbs="]') ||
+            e.target.closest('a[role="button"]') ||
+            e.target.closest('div[role="listitem"]'); // Filter chips
+
+        if (!filterElement) return;
+
+        // Check if it's likely a filter
+        const isFilter = filterElement.href && filterElement.href.includes('tbs=') ||
+            filterElement.closest('#hdtb-msb') || // Desktop tabs
+            filterElement.closest('.chip-container') || // Chips
+            filterElement.getAttribute('role') === 'listitem';
+
+        if (isFilter) {
+            console.log('[Content] Filter clicked');
+
+            // We log this as a distinct event type if needed, or rely on the query change
+            // The user specifically asked for "Filter change count", so let's log an event
+
+            const filterEvent = {
+                event_id: crypto.randomUUID(),
+                event_type: 'filter_click',
+                timestamp: new Date().toISOString(),
+                query_id: currentQueryId,
+                data: {
+                    filter_text: filterElement.textContent.trim(),
+                    filter_type: filterElement.getAttribute('aria-label') || 'unknown'
+                }
+            };
+
+            await safeSendMessage({
+                action: 'LOG_EVENT',
+                event: filterEvent
+            });
+        }
+    }, true);
 }
 
 // Observe DOM changes

@@ -94,7 +94,7 @@ startBtn.addEventListener('click', async () => {
 
 // End session
 endBtn.addEventListener('click', async () => {
-    if (!confirm('Are you sure you want to end this session? All data will be sent to the server.')) {
+    if (!confirm('Are you sure you want to end this session? You will be prompted to save the session logs.')) {
         return;
     }
 
@@ -115,9 +115,23 @@ endBtn.addEventListener('click', async () => {
         }
 
         if (response.success) {
-            console.log('[Popup] Session ended:', response.eventsSent, 'events sent');
+            console.log('[Popup] Session ended. Exporting data...');
+
+            // Auto-export data
+            const data = response.data;
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const filename = `session-logs-${data.session_id}-${timestamp}.json`;
+
+            chrome.downloads.download({
+                url: url,
+                filename: filename,
+                saveAs: true
+            });
+
             showSetupView();
-            alert('Session ended successfully. ' + response.eventsSent + ' events were sent to the server.');
+            // alert('Session ended. Please save the log file.');
         } else {
             console.error('[Popup] Session end failed:', response.error);
             alert('Failed to end session: ' + response.error);

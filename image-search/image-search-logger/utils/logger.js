@@ -13,7 +13,7 @@ function createQueryEvent(sessionId, queryId, queryData) {
         data: {
             query_text: queryData.queryText,
             query_length_char: queryData.queryText.length,
-            query_length_tokens: queryData.queryText.split(/\s+/).filter(t => t.length > 0).length,
+            reformulation_type: queryData.reformulationType || 'new',
             previous_query: queryData.previousQuery || null,
             referrer_query: queryData.referrerQuery || null
         }
