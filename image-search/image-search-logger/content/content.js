@@ -19,6 +19,15 @@ let saveButtonInjected = false;
 let lastFilterState = '';
 let lastSentDepth = 0;
 
+function parseRankIndex(value) {
+    if (value === null || value === undefined || value === '') {
+        return null;
+    }
+
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
 // Helper for reformulation type
 function getReformulationType(current, previous) {
     if (!previous) return 'new';
@@ -242,7 +251,7 @@ function extractImageData(element, event) {
         if (gridItem) {
             // Method 1: Get from data-ri
             if (gridItem.hasAttribute('data-ri')) {
-                rankIndex = parseInt(gridItem.getAttribute('data-ri'));
+                rankIndex = parseRankIndex(gridItem.getAttribute('data-ri'));
             } else {
                 // Method 2: Calculate index based on position in grid
                 // This assumes all results have the class 'isv-r' which is standard for Google Images
@@ -493,7 +502,7 @@ function extractSaveData() {
             document.querySelector('div.isv-r[data-ri][aria-selected="true"]');
 
         if (selectedGridItem) {
-            rankIndex = parseInt(selectedGridItem.getAttribute('data-ri'));
+            rankIndex = parseRankIndex(selectedGridItem.getAttribute('data-ri'));
         }
 
         // Method 2: Fallback to the last clicked rank index
