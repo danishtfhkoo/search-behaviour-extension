@@ -14,89 +14,9 @@ let previousQuery = null;
 let maxScrollDepth = 0;
 let imageClickStartTime = null;
 let lastClickedUrl = null;
-let lastClickedRankIndex = null;
 let saveButtonInjected = false;
 let lastFilterState = '';
 let lastSentDepth = 0;
-
-function parseRankIndex(value) {
-    if (value === null || value === undefined || value === '') {
-        return null;
-    }
-
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : null;
-}
-
-function parseImgresParams(href) {
-    if (!href) return null;
-
-    try {
-        const parsedUrl = new URL(href, window.location.origin);
-        return {
-            imgurl: parsedUrl.searchParams.get('imgurl'),
-            imgrefurl: parsedUrl.searchParams.get('imgrefurl')
-        };
-    } catch (error) {
-        return null;
-    }
-}
-
-function getRankIndexFromResultLink(linkElement) {
-    if (!linkElement) return null;
-
-    const targetParams = parseImgresParams(linkElement.href);
-    const targetImgUrl = targetParams && targetParams.imgurl;
-    const targetSourceUrl = targetParams && targetParams.imgrefurl;
-
-    // Method 1: Resolve to a true grid item with data-ri by matching /imgres params.
-    // This works even when users click from preview/side-panel links.
-    if (targetImgUrl || targetSourceUrl) {
-        const gridItems = Array.from(document.querySelectorAll('[data-ri]'));
-        for (const item of gridItems) {
-            const itemRank = parseRankIndex(item.getAttribute('data-ri'));
-            if (itemRank === null) continue;
-
-            const itemLink = item.querySelector('a[href*="/imgres?"]');
-            if (!itemLink) continue;
-
-            const itemParams = parseImgresParams(itemLink.href);
-            if (!itemParams) continue;
-
-            const sameImageUrl = targetImgUrl && itemParams.imgurl === targetImgUrl;
-            const sameSourceUrl = targetSourceUrl && itemParams.imgrefurl === targetSourceUrl;
-            if (sameImageUrl || sameSourceUrl) {
-                return itemRank;
-            }
-        }
-    }
-
-    // Method 2: If clicked link is already inside a data-ri item, use that directly.
-    const directGridItem = linkElement.closest('[data-ri]');
-    if (directGridItem) {
-        return parseRankIndex(directGridItem.getAttribute('data-ri'));
-    }
-
-    // Method 3: Last-resort rank by index among links that are actually inside data-ri items.
-    // Avoid using all /imgres links in the document (preview links skew this to low values).
-    const gridLinks = Array.from(document.querySelectorAll('[data-ri] a[href*="/imgres?"]'));
-    if (!gridLinks.length) return null;
-
-    const directIndex = gridLinks.indexOf(linkElement);
-    if (directIndex !== -1) return directIndex;
-
-    if (!targetParams) return null;
-    const matchedIndex = gridLinks.findIndex((resultLink) => {
-        const resultParams = parseImgresParams(resultLink.href);
-        if (!resultParams) return false;
-
-        const sameImageUrl = targetParams.imgurl && resultParams.imgurl === targetParams.imgurl;
-        const sameSourceUrl = targetParams.imgrefurl && resultParams.imgrefurl === targetParams.imgrefurl;
-        return sameImageUrl || sameSourceUrl;
-    });
-
-    return matchedIndex !== -1 ? matchedIndex : null;
-}
 
 // Helper for reformulation type
 function getReformulationType(current, previous) {
@@ -316,44 +236,6 @@ function extractImageData(element, event) {
     try {
         const eventTarget = event && event.target instanceof Element ? event.target : null;
 
-        // Find the image grid item (Google can change container tag names, so don't force div)
-        const gridItem = (eventTarget && eventTarget.closest('[data-ri]')) ||
-            element.closest('[data-ri]') ||
-            (eventTarget && eventTarget.closest('div.isv-r')) ||
-            element.closest('div.isv-r');
-
-        // Keep a reference to the clicked /imgres result link when available
-        const resultLink = (eventTarget && eventTarget.closest('a[href*="/imgres?"]')) ||
-            element.closest('a[href*="/imgres?"]') ||
-            (element.matches && element.matches('a[href*="/imgres?"]') ? element : null);
-
-        let rankIndex = null;
-
-        if (gridItem) {
-            // Method 1: Get from data-ri
-            if (gridItem.hasAttribute('data-ri')) {
-                rankIndex = parseRankIndex(gridItem.getAttribute('data-ri'));
-            } else {
-                // Method 2: Calculate index based on position in grid
-                // This assumes all results have the class 'isv-r' which is standard for Google Images
-                const allItems = Array.from(document.querySelectorAll('div.isv-r'));
-                const index = allItems.indexOf(gridItem);
-                if (index !== -1) {
-                    rankIndex = index;
-                }
-            }
-        }
-
-        // Method 3: Fallback to /imgres link position in result list
-        if (rankIndex === null && resultLink) {
-            rankIndex = getRankIndexFromResultLink(resultLink);
-        }
-
-        // Store for save event fallback
-        if (rankIndex !== null) {
-            lastClickedRankIndex = rankIndex;
-        }
-
         // Try to find image URLs
         let thumbnailUrl = null;
         let imageUrl = null;
@@ -366,19 +248,24 @@ function extractImageData(element, event) {
             thumbnailUrl = img.src;
         }
 
-        // Look for link parameters
-        const link = resultLink || (eventTarget && eventTarget.closest('a')) || element.closest('a');
+        // Look for /imgres link
+        const link = (eventTarget && eventTarget.closest('a[href*="/imgres?"]')) ||
+            element.closest('a[href*="/imgres?"]') ||
+            element.closest('a');
+
         if (link && link.href) {
             try {
-                const url = new URL(link.href);
-                imageUrl = url.searchParams.get('imgurl');
-                sourcePageUrl = url.searchParams.get('imgrefurl');
+                const url = new URL(link.href, window.location.origin);
+                if (url.searchParams.has('imgurl')) {
+                    imageUrl = url.searchParams.get('imgurl');
+                    sourcePageUrl = url.searchParams.get('imgrefurl');
 
-                if (sourcePageUrl) {
-                    try {
-                        domain = new URL(sourcePageUrl).hostname;
-                    } catch (e) {
-                        domain = null;
+                    if (sourcePageUrl) {
+                        try {
+                            domain = new URL(sourcePageUrl).hostname;
+                        } catch (e) {
+                            domain = null;
+                        }
                     }
                 }
             } catch (e) {
@@ -386,24 +273,22 @@ function extractImageData(element, event) {
             }
         }
 
-        // If we have at least a rank index OR a thumbnail, consider it a valid result click
-        // even if we couldn't parse the full image URL (which often happens with side-panel results)
-        if (rankIndex === null && !thumbnailUrl && !imageUrl) {
-            return null;
+        if (imageUrl || thumbnailUrl || sourcePageUrl) {
+            return {
+                image_url: imageUrl,
+                thumbnail_url: thumbnailUrl,
+                source_page_url: sourcePageUrl,
+                domain: domain
+            };
         }
 
-        return {
-            image_url: imageUrl,
-            thumbnail_url: thumbnailUrl,
-            source_page_url: sourcePageUrl,
-            domain: domain,
-            rank_index: rankIndex
-        };
+        return null;
     } catch (error) {
         console.error('[Content] Error extracting image data:', error);
         return null;
     }
 }
+
 
 // Inject save button on image preview
 function injectSaveButton() {
@@ -578,35 +463,14 @@ function extractSaveData() {
             siteName = visitLink.textContent.trim();
         }
 
-        // Try to get rank index from data attribute of the selected item in the main grid
-        let rankIndex = null;
-
-        // Method 1: Look for the specific selected element in the grid
-        // The selected item usually has a specific class or style applied by Google
-        const selectedGridItem = document.querySelector('div.isv-r[data-ri].selected') ||
-            document.querySelector('div.isv-r[data-ri].CAM') ||
-            document.querySelector('div.isv-r[data-ri][aria-selected="true"]');
-
-        if (selectedGridItem) {
-            rankIndex = parseRankIndex(selectedGridItem.getAttribute('data-ri'));
-        }
-
-        // Method 2: Fallback to the last clicked rank index
-        // This relies on the fact that users usually click an image before saving it
-        if (rankIndex === null && lastClickedRankIndex !== null) {
-            console.log('[Content] Using lastClickedRankIndex as fallback:', lastClickedRankIndex);
-            rankIndex = lastClickedRankIndex;
-        }
-
         return {
             image_url: imageUrl,
-            thumbnail_url: imageUrl, // Fallback
+            thumbnail_url: imageUrl,
             source_page_url: sourcePageUrl,
             domain: domain,
-            rank_index: rankIndex,
             alt_text: altText,
             caption_text: captionText,
-            result_title: captionText, // Use caption as title if separate title not found
+            result_title: captionText,
             site_name: siteName,
             image_width: imageWidth,
             image_height: imageHeight
