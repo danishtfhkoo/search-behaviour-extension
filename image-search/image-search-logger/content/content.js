@@ -45,16 +45,48 @@ function parseImgresParams(href) {
 function getRankIndexFromResultLink(linkElement) {
     if (!linkElement) return null;
 
-    const allResultLinks = Array.from(document.querySelectorAll('a[href*="/imgres?"]'));
-    if (!allResultLinks.length) return null;
+    const targetParams = parseImgresParams(linkElement.href);
+    const targetImgUrl = targetParams && targetParams.imgurl;
+    const targetSourceUrl = targetParams && targetParams.imgrefurl;
 
-    const directIndex = allResultLinks.indexOf(linkElement);
+    // Method 1: Resolve to a true grid item with data-ri by matching /imgres params.
+    // This works even when users click from preview/side-panel links.
+    if (targetImgUrl || targetSourceUrl) {
+        const gridItems = Array.from(document.querySelectorAll('[data-ri]'));
+        for (const item of gridItems) {
+            const itemRank = parseRankIndex(item.getAttribute('data-ri'));
+            if (itemRank === null) continue;
+
+            const itemLink = item.querySelector('a[href*="/imgres?"]');
+            if (!itemLink) continue;
+
+            const itemParams = parseImgresParams(itemLink.href);
+            if (!itemParams) continue;
+
+            const sameImageUrl = targetImgUrl && itemParams.imgurl === targetImgUrl;
+            const sameSourceUrl = targetSourceUrl && itemParams.imgrefurl === targetSourceUrl;
+            if (sameImageUrl || sameSourceUrl) {
+                return itemRank;
+            }
+        }
+    }
+
+    // Method 2: If clicked link is already inside a data-ri item, use that directly.
+    const directGridItem = linkElement.closest('[data-ri]');
+    if (directGridItem) {
+        return parseRankIndex(directGridItem.getAttribute('data-ri'));
+    }
+
+    // Method 3: Last-resort rank by index among links that are actually inside data-ri items.
+    // Avoid using all /imgres links in the document (preview links skew this to low values).
+    const gridLinks = Array.from(document.querySelectorAll('[data-ri] a[href*="/imgres?"]'));
+    if (!gridLinks.length) return null;
+
+    const directIndex = gridLinks.indexOf(linkElement);
     if (directIndex !== -1) return directIndex;
 
-    const targetParams = parseImgresParams(linkElement.href);
     if (!targetParams) return null;
-
-    const matchedIndex = allResultLinks.findIndex((resultLink) => {
+    const matchedIndex = gridLinks.findIndex((resultLink) => {
         const resultParams = parseImgresParams(resultLink.href);
         if (!resultParams) return false;
 
