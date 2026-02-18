@@ -31,7 +31,7 @@ function createImageClickEvent(sessionId, queryId, imageData) {
             thumbnail_url: imageData.thumbnailUrl || null,
             source_page_url: imageData.sourcePageUrl || null,
             domain: imageData.domain || null,
-            rank_index: imageData.rankIndex || null
+            rank_index: imageData.rankIndex ?? null
         }
     };
 }
@@ -48,7 +48,7 @@ function createSaveEvent(sessionId, queryId, saveData) {
             thumbnail_url: saveData.thumbnailUrl || null,
             source_page_url: saveData.sourcePageUrl || null,
             domain: saveData.domain || null,
-            rank_index: saveData.rankIndex || null,
+            rank_index: saveData.rankIndex ?? null,
             alt_text: saveData.altText || null,
             caption_text: saveData.captionText || null,
             result_title: saveData.resultTitle || null,
@@ -93,7 +93,7 @@ function createImpressionEvent(sessionId, queryId, impressionData) {
         data: {
             image_id: impressionData.imageId,
             thumbnail_url: impressionData.thumbnailUrl || null,
-            rank_index: impressionData.rankIndex || null
+            rank_index: impressionData.rankIndex ?? null
         }
     };
 }

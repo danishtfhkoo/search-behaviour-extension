@@ -14,6 +14,7 @@ let previousQuery = null;
 let maxScrollDepth = 0;
 let imageClickStartTime = null;
 let lastClickedUrl = null;
+let lastClickedRankIndex = null;
 let saveButtonInjected = false;
 let lastFilterState = '';
 let lastSentDepth = 0;
@@ -235,11 +236,27 @@ function setupImageClickListeners() {
 function extractImageData(element, event) {
     try {
         // Find the image grid item (closest div with data-ri)
-        const gridItem = element.closest('div[data-ri]');
+        const gridItem = element.closest('div[data-ri]') || element.closest('div.isv-r');
         let rankIndex = null;
 
         if (gridItem) {
-            rankIndex = parseInt(gridItem.getAttribute('data-ri'));
+            // Method 1: Get from data-ri
+            if (gridItem.hasAttribute('data-ri')) {
+                rankIndex = parseInt(gridItem.getAttribute('data-ri'));
+            } else {
+                // Method 2: Calculate index based on position in grid
+                // This assumes all results have the class 'isv-r' which is standard for Google Images
+                const allItems = Array.from(document.querySelectorAll('div.isv-r'));
+                const index = allItems.indexOf(gridItem);
+                if (index !== -1) {
+                    rankIndex = index;
+                }
+            }
+        }
+
+        // Store for save event fallback
+        if (rankIndex !== null) {
+            lastClickedRankIndex = rankIndex;
         }
 
         // Try to find image URLs
@@ -468,10 +485,22 @@ function extractSaveData() {
 
         // Try to get rank index from data attribute of the selected item in the main grid
         let rankIndex = null;
-        const selectedGridItem = document.querySelector('div[data-ri][class*="selected"]') ||
-            document.querySelector('div[data-ri].isv-r.CAM'); // Common selected class
+
+        // Method 1: Look for the specific selected element in the grid
+        // The selected item usually has a specific class or style applied by Google
+        const selectedGridItem = document.querySelector('div.isv-r[data-ri].selected') ||
+            document.querySelector('div.isv-r[data-ri].CAM') ||
+            document.querySelector('div.isv-r[data-ri][aria-selected="true"]');
+
         if (selectedGridItem) {
             rankIndex = parseInt(selectedGridItem.getAttribute('data-ri'));
+        }
+
+        // Method 2: Fallback to the last clicked rank index
+        // This relies on the fact that users usually click an image before saving it
+        if (rankIndex === null && lastClickedRankIndex !== null) {
+            console.log('[Content] Using lastClickedRankIndex as fallback:', lastClickedRankIndex);
+            rankIndex = lastClickedRankIndex;
         }
 
         return {
