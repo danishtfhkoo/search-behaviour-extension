@@ -28,6 +28,44 @@ function parseRankIndex(value) {
     return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseImgresParams(href) {
+    if (!href) return null;
+
+    try {
+        const parsedUrl = new URL(href, window.location.origin);
+        return {
+            imgurl: parsedUrl.searchParams.get('imgurl'),
+            imgrefurl: parsedUrl.searchParams.get('imgrefurl')
+        };
+    } catch (error) {
+        return null;
+    }
+}
+
+function getRankIndexFromResultLink(linkElement) {
+    if (!linkElement) return null;
+
+    const allResultLinks = Array.from(document.querySelectorAll('a[href*="/imgres?"]'));
+    if (!allResultLinks.length) return null;
+
+    const directIndex = allResultLinks.indexOf(linkElement);
+    if (directIndex !== -1) return directIndex;
+
+    const targetParams = parseImgresParams(linkElement.href);
+    if (!targetParams) return null;
+
+    const matchedIndex = allResultLinks.findIndex((resultLink) => {
+        const resultParams = parseImgresParams(resultLink.href);
+        if (!resultParams) return false;
+
+        const sameImageUrl = targetParams.imgurl && resultParams.imgurl === targetParams.imgurl;
+        const sameSourceUrl = targetParams.imgrefurl && resultParams.imgrefurl === targetParams.imgrefurl;
+        return sameImageUrl || sameSourceUrl;
+    });
+
+    return matchedIndex !== -1 ? matchedIndex : null;
+}
+
 // Helper for reformulation type
 function getReformulationType(current, previous) {
     if (!previous) return 'new';
@@ -244,8 +282,19 @@ function setupImageClickListeners() {
 // Extract image data from clicked element
 function extractImageData(element, event) {
     try {
-        // Find the image grid item (closest div with data-ri)
-        const gridItem = element.closest('div[data-ri]') || element.closest('div.isv-r');
+        const eventTarget = event && event.target instanceof Element ? event.target : null;
+
+        // Find the image grid item (Google can change container tag names, so don't force div)
+        const gridItem = (eventTarget && eventTarget.closest('[data-ri]')) ||
+            element.closest('[data-ri]') ||
+            (eventTarget && eventTarget.closest('div.isv-r')) ||
+            element.closest('div.isv-r');
+
+        // Keep a reference to the clicked /imgres result link when available
+        const resultLink = (eventTarget && eventTarget.closest('a[href*="/imgres?"]')) ||
+            element.closest('a[href*="/imgres?"]') ||
+            (element.matches && element.matches('a[href*="/imgres?"]') ? element : null);
+
         let rankIndex = null;
 
         if (gridItem) {
@@ -261,6 +310,11 @@ function extractImageData(element, event) {
                     rankIndex = index;
                 }
             }
+        }
+
+        // Method 3: Fallback to /imgres link position in result list
+        if (rankIndex === null && resultLink) {
+            rankIndex = getRankIndexFromResultLink(resultLink);
         }
 
         // Store for save event fallback
@@ -281,7 +335,7 @@ function extractImageData(element, event) {
         }
 
         // Look for link parameters
-        const link = element.closest('a');
+        const link = resultLink || (eventTarget && eventTarget.closest('a')) || element.closest('a');
         if (link && link.href) {
             try {
                 const url = new URL(link.href);
