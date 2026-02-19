@@ -69,7 +69,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return true;
 
             case 'INCREMENT_QUERY_ID':
-                handleIncrementQueryId().then(sendResponse).catch(err => {
+                handleIncrementQueryId(message).then(sendResponse).catch(err => {
                     console.error('[Background] INCREMENT_QUERY_ID error:', err);
                     sendResponse({ success: false, error: err.message });
                 });
@@ -103,15 +103,14 @@ async function handleStartSession({ participantId, taskId }) {
             participantId,
             taskId,
             startTime,
-            queryId: 0
+            queryId: 0,
+            lastQuery: null,
+            lastFilterState: ''
         };
 
         await setSessionState(sessionState);
         await resetSessionStats();
         await clearEventQueue();
-
-        // Clear persisted query so a fresh session doesn't inherit a previous participant's last query
-        await chrome.storage.session.remove('lastQuery');
 
         currentQueryId = 0;
 
@@ -247,7 +246,12 @@ async function handleGetQueryId() {
         if (!sessionState) {
             return { success: false, error: 'No active session' };
         }
-        return { success: true, queryId: sessionState.queryId };
+        return {
+            success: true,
+            queryId: sessionState.queryId,
+            previousQuery: sessionState.lastQuery || null,
+            previousFilterState: sessionState.lastFilterState || ''
+        };
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -257,11 +261,13 @@ async function handleGetQueryId() {
 
 
 // Increment query ID
-async function handleIncrementQueryId() {
+async function handleIncrementQueryId(message = {}) {
     try {
         const sessionState = await getSessionState();
         if (sessionState) {
             sessionState.queryId++;
+            sessionState.lastQuery = message.queryText !== undefined ? message.queryText : (sessionState.lastQuery || null);
+            sessionState.lastFilterState = message.filterState !== undefined ? message.filterState : (sessionState.lastFilterState || '');
             await setSessionState(sessionState);
             return { success: true, queryId: sessionState.queryId };
         } else {

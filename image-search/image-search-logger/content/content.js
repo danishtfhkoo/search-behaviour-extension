@@ -126,18 +126,19 @@ async function trackQuery() {
     // Clean query text for comparison
     const cleanQuery = (queryText || '').trim();
 
-    // Restore currentQuery from session storage if lost to page reload
-    if (currentQuery === null) {
-        try {
-            const stored = await chrome.storage.session.get('lastQuery');
-            if (stored.lastQuery !== undefined) {
-                currentQuery = stored.lastQuery;
-            }
-        } catch (e) { /* session storage unavailable */ }
-    }
-
     // Check filter state (tbs/udm/chips)
     const filterState = ['tbs', 'udm', 'tbm', 'chips'].map(k => url.searchParams.get(k)).join('|');
+
+    // On a full page reload currentQuery is null; restore the previous query from the
+    // service worker's session state (stored in chrome.storage.local, which is reliable).
+    if (currentQuery === null) {
+        const sessionResp = await safeSendMessage({ action: 'GET_QUERY_ID' });
+        if (sessionResp && sessionResp.success) {
+            currentQuery = sessionResp.previousQuery || null;
+            lastFilterState = sessionResp.previousFilterState || '';
+            currentQueryId = sessionResp.queryId;
+        }
+    }
 
     if (cleanQuery === currentQuery && filterState === lastFilterState) {
         console.log('[Content] Query/Filter unchanged, skipping');
@@ -157,13 +158,13 @@ async function trackQuery() {
     currentQuery = cleanQuery;
     lastFilterState = filterState;
 
-    // Persist currentQuery so it survives full page reloads
-    try {
-        await chrome.storage.session.set({ lastQuery: currentQuery });
-    } catch (e) { /* session storage unavailable */ }
-
-    // Increment query ID
-    const response = await safeSendMessage({ action: 'INCREMENT_QUERY_ID' });
+    // Increment query ID, passing the new query text/filter so the service worker
+    // can persist them for the next page load.
+    const response = await safeSendMessage({
+        action: 'INCREMENT_QUERY_ID',
+        queryText: cleanQuery,
+        filterState: filterState
+    });
 
     if (response && response.success) {
         currentQueryId = response.queryId;
