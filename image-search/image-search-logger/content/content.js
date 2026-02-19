@@ -126,6 +126,16 @@ async function trackQuery() {
     // Clean query text for comparison
     const cleanQuery = (queryText || '').trim();
 
+    // Restore currentQuery from session storage if lost to page reload
+    if (currentQuery === null) {
+        try {
+            const stored = await chrome.storage.session.get('lastQuery');
+            if (stored.lastQuery !== undefined) {
+                currentQuery = stored.lastQuery;
+            }
+        } catch (e) { /* session storage unavailable */ }
+    }
+
     // Check filter state (tbs/udm/chips)
     const filterState = ['tbs', 'udm', 'tbm', 'chips'].map(k => url.searchParams.get(k)).join('|');
 
@@ -146,6 +156,11 @@ async function trackQuery() {
     previousQuery = currentQuery;
     currentQuery = cleanQuery;
     lastFilterState = filterState;
+
+    // Persist currentQuery so it survives full page reloads
+    try {
+        await chrome.storage.session.set({ lastQuery: currentQuery });
+    } catch (e) { /* session storage unavailable */ }
 
     // Increment query ID
     const response = await safeSendMessage({ action: 'INCREMENT_QUERY_ID' });
@@ -217,6 +232,24 @@ function setupImageClickListeners() {
                 action: 'LOG_EVENT',
                 event: clickEvent
             });
+
+            // Log dwell for previous image if one was already being tracked
+            if (imageClickStartTime) {
+                const dwellTime = Date.now() - imageClickStartTime;
+                await safeSendMessage({
+                    action: 'LOG_EVENT',
+                    event: {
+                        event_id: crypto.randomUUID(),
+                        event_type: 'dwell',
+                        timestamp: new Date().toISOString(),
+                        query_id: currentQueryId,
+                        data: {
+                            url: lastClickedUrl,
+                            dwell_time_ms: dwellTime
+                        }
+                    }
+                });
+            }
 
             // Track dwell time
             imageClickStartTime = Date.now();
@@ -697,12 +730,33 @@ function observeDOMChanges() {
 
 // Listen for URL changes (SPA navigation)
 let lastUrl = window.location.href;
-setInterval(() => {
+setInterval(async () => {
     const currentUrl = window.location.href;
 
     if (currentUrl !== lastUrl) {
         lastUrl = currentUrl;
         console.log('[Content] URL changed, reinitializing');
+
+        // Log dwell if user navigated to a new search while an image was open
+        if (sessionActive && imageClickStartTime) {
+            const dwellTime = Date.now() - imageClickStartTime;
+            await safeSendMessage({
+                action: 'LOG_EVENT',
+                event: {
+                    event_id: crypto.randomUUID(),
+                    event_type: 'dwell',
+                    timestamp: new Date().toISOString(),
+                    query_id: currentQueryId,
+                    data: {
+                        url: lastClickedUrl,
+                        dwell_time_ms: dwellTime
+                    }
+                }
+            });
+            imageClickStartTime = null;
+            lastClickedUrl = null;
+            saveButtonInjected = false;
+        }
 
         if (isGoogleImages()) {
             trackQuery();
