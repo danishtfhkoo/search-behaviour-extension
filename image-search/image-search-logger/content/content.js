@@ -135,7 +135,7 @@ async function trackQuery() {
     }
 
     let reformulationType = 'new';
-    if (currentQuery !== null) { // Only if not first query
+    if (currentQuery != null) { // Only if not first query
         if (cleanQuery === currentQuery && filterState !== lastFilterState) {
             reformulationType = 'filter_change';
         } else {
@@ -163,7 +163,6 @@ async function trackQuery() {
                 query_text: queryText,
                 query_length_char: queryText.length,
                 reformulation_type: reformulationType,
-                previous_query: previousQuery,
                 referrer_query: null // Could extract from document.referrer if needed
             }
         };
@@ -575,25 +574,23 @@ function setupVisibilityTracking() {
             // User switched away
             const dwellTime = Date.now() - imageClickStartTime;
 
-            if (dwellTime > 1000) { // Only log if > 1 second
-                const dwellEvent = {
-                    event_id: crypto.randomUUID(),
-                    event_type: 'dwell',
-                    timestamp: new Date().toISOString(),
-                    query_id: currentQueryId,
-                    data: {
-                        url: lastClickedUrl,
-                        dwell_time_ms: dwellTime
-                    }
-                };
+            const dwellEvent = {
+                event_id: crypto.randomUUID(),
+                event_type: 'dwell',
+                timestamp: new Date().toISOString(),
+                query_id: currentQueryId,
+                data: {
+                    url: lastClickedUrl,
+                    dwell_time_ms: dwellTime
+                }
+            };
 
-                await safeSendMessage({
-                    action: 'LOG_EVENT',
-                    event: dwellEvent
-                });
+            await safeSendMessage({
+                action: 'LOG_EVENT',
+                event: dwellEvent
+            });
 
-                console.log('[Content] Dwell time logged:', dwellTime + 'ms');
-            }
+            console.log('[Content] Dwell time logged:', dwellTime + 'ms');
 
             // Reset
             imageClickStartTime = null;
@@ -630,8 +627,37 @@ function setupFilterTracking() {
         if (isFilter) {
             console.log('[Content] Filter clicked');
 
-            // We log this as a distinct event type if needed, or rely on the query change
-            // The user specifically asked for "Filter change count", so let's log an event
+            // Detect filter type more precisely
+            let filterType = filterElement.getAttribute('aria-label') || 'unknown';
+
+            if (filterElement.href) {
+                try {
+                    const url = new URL(filterElement.href, window.location.origin);
+                    const tbs = url.searchParams.get('tbs');
+
+                    if (tbs) {
+                        if (tbs.includes('isz:')) filterType = 'size';
+                        else if (tbs.includes('ic:') || tbs.includes('isc:')) filterType = 'color';
+                        else if (tbs.includes('itp:')) filterType = 'type';
+                        else if (tbs.includes('qdr:') || tbs.includes('cdr:')) filterType = 'time';
+                        else if (tbs.includes('sur:') || tbs.includes('il:')) filterType = 'usage_rights';
+                        else filterType = 'tools_filter';
+                    } else if (url.searchParams.has('chips')) {
+                        filterType = 'chip';
+                    }
+                } catch (err) {
+                    console.error('[Content] Error parsing filter URL:', err);
+                }
+            }
+
+            // Fallback heuristics based on context
+            if (filterType === 'unknown' || filterType === 'tools_filter') {
+                if (filterElement.closest('#hdtb-msb')) {
+                    filterType = 'search_tab';
+                } else if (filterElement.closest('.chip-container') || filterElement.closest('[role="listitem"]')) {
+                    filterType = 'chip';
+                }
+            }
 
             const filterEvent = {
                 event_id: crypto.randomUUID(),
@@ -640,7 +666,7 @@ function setupFilterTracking() {
                 query_id: currentQueryId,
                 data: {
                     filter_text: filterElement.textContent.trim(),
-                    filter_type: filterElement.getAttribute('aria-label') || 'unknown'
+                    filter_type: filterType
                 }
             };
 
