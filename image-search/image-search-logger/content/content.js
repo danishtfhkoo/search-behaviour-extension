@@ -99,6 +99,10 @@ async function init() {
         sessionActive = true;
         console.log('[Content] Session is active');
 
+        // Restore state from session
+        currentQuery = response.currentQuery || null;
+        lastFilterState = response.lastFilterState || '';
+
         // Track the current query
         await trackQuery();
 
@@ -148,7 +152,14 @@ async function trackQuery() {
     lastFilterState = filterState;
 
     // Increment query ID
-    const response = await safeSendMessage({ action: 'INCREMENT_QUERY_ID' });
+    // Increment query ID and persist state
+    const response = await safeSendMessage({
+        action: 'INCREMENT_QUERY_ID',
+        data: {
+            currentQuery: cleanQuery,
+            lastFilterState: filterState
+        }
+    });
 
     if (response && response.success) {
         currentQueryId = response.queryId;
