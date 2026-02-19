@@ -69,7 +69,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return true;
 
             case 'INCREMENT_QUERY_ID':
-                handleIncrementQueryId(message.data).then(sendResponse).catch(err => {
+                handleIncrementQueryId().then(sendResponse).catch(err => {
                     console.error('[Background] INCREMENT_QUERY_ID error:', err);
                     sendResponse({ success: false, error: err.message });
                 });
@@ -103,9 +103,7 @@ async function handleStartSession({ participantId, taskId }) {
             participantId,
             taskId,
             startTime,
-            queryId: 0,
-            currentQuery: null,
-            lastFilterState: ''
+            queryId: 0
         };
 
         await setSessionState(sessionState);
@@ -246,12 +244,7 @@ async function handleGetQueryId() {
         if (!sessionState) {
             return { success: false, error: 'No active session' };
         }
-        return {
-            success: true,
-            queryId: sessionState.queryId,
-            currentQuery: sessionState.currentQuery,
-            lastFilterState: sessionState.lastFilterState
-        };
+        return { success: true, queryId: sessionState.queryId };
     } catch (error) {
         return { success: false, error: error.message };
     }
@@ -266,10 +259,6 @@ async function handleIncrementQueryId() {
         const sessionState = await getSessionState();
         if (sessionState) {
             sessionState.queryId++;
-            if (messageData) {
-                if (messageData.currentQuery !== undefined) sessionState.currentQuery = messageData.currentQuery;
-                if (messageData.lastFilterState !== undefined) sessionState.lastFilterState = messageData.lastFilterState;
-            }
             await setSessionState(sessionState);
             return { success: true, queryId: sessionState.queryId };
         } else {
