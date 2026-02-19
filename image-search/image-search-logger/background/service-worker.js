@@ -110,6 +110,9 @@ async function handleStartSession({ participantId, taskId }) {
         await resetSessionStats();
         await clearEventQueue();
 
+        // Clear persisted query so a fresh session doesn't inherit a previous participant's last query
+        await chrome.storage.session.remove('lastQuery');
+
         currentQueryId = 0;
 
         // Start batch timer
