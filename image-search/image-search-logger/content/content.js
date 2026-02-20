@@ -14,6 +14,7 @@ let previousQuery = null;
 let maxScrollDepth = 0;
 let imageClickStartTime = null;
 let lastClickedUrl = null;
+let lastClickedDomain = null;
 let saveButtonInjected = false;
 let lastFilterState = '';
 let lastSentDepth = 0;
@@ -255,6 +256,7 @@ function setupImageClickListeners() {
             // Track dwell time
             imageClickStartTime = Date.now();
             lastClickedUrl = imageData.source_page_url;
+            lastClickedDomain = imageData.domain;
 
             // Inject save button after a short delay (wait for preview to load)
             setTimeout(() => {
@@ -394,7 +396,10 @@ async function handleSave() {
         query_id: currentQueryId,
         data: {
             query_text: currentQuery,
-            ...saveData
+            ...saveData,
+            // Fall back to click-time values when the preview panel scrape misses them
+            source_page_url: saveData.source_page_url || lastClickedUrl || null,
+            domain: saveData.domain || lastClickedDomain || null
         }
     };
 
