@@ -50,7 +50,7 @@ async function incrementStat(statName) {
     stats.totalEvents = (stats.totalEvents || 0) + 1;
     await updateSessionStats(stats);
 
-    // NotifyREMAINDERpopup of stats update
+    // Notify popup of stats update
     chrome.runtime.sendMessage({ action: 'STATS_UPDATE' }).catch(() => {
         // Popup might not be open
     });

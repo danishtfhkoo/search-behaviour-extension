@@ -9,8 +9,6 @@ const exportBtn = document.getElementById('exportBtn');
 const sessionTimer = document.getElementById('sessionTimer');
 const activeParticipant = document.getElementById('activeParticipant');
 const activeTask = document.getElementById('activeTask');
-const queryCount = document.getElementById('queryCount');
-const saveCount = document.getElementById('saveCount');
 const eventCount = document.getElementById('eventCount');
 
 let timerInterval = null;
@@ -205,8 +203,6 @@ async function updateStats() {
     const { sessionStats } = await chrome.storage.local.get('sessionStats');
 
     if (sessionStats) {
-        queryCount.textContent = sessionStats.queries || 0;
-        saveCount.textContent = sessionStats.saves || 0;
         eventCount.textContent = sessionStats.totalEvents || 0;
     }
 }

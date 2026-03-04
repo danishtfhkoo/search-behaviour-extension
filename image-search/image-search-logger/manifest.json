@@ -1,12 +1,10 @@
 {
     "manifest_version": 3,
-    "name": "Image Search Behaviour Logger",
+    "name": "Search Logger",
     "version": "1.0.0",
-    "description": "Research tool for logging user behavior during Google Images search sessions",
+    "description": "Academic research tool for recording Google Images search sessions. For authorised study participants only.",
     "permissions": [
         "storage",
-        "activeTab",
-        "scripting",
         "downloads"
     ],
     "host_permissions": [
