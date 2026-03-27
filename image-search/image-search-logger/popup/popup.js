@@ -119,8 +119,7 @@ endBtn.addEventListener('click', async () => {
             const data = response.data;
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `session-logs-${data.session_id}-${timestamp}.json`;
+            const filename = `session-logs-${data.participant_id}-${data.task_id}.json`;
 
             chrome.downloads.download({
                 url: url,
@@ -157,8 +156,7 @@ exportBtn.addEventListener('click', async () => {
             // Create download
             const blob = new Blob([JSON.stringify(response.data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            const filename = `session-logs-${response.data.session_id}-${timestamp}.json`;
+            const filename = `session-logs-${response.data.participant_id}-${response.data.task_id}.json`;
 
             chrome.downloads.download({
                 url: url,
